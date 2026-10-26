@@ -1,0 +1,767 @@
+You are an academic paper writer. Generate a complete NEURIPS style paper
+based on the experiment results provided.
+
+════════════════════════════════════════════════════════════════════════════════
+                         IMPORTANT: BEFORE YOU START
+════════════════════════════════════════════════════════════════════════════════
+
+Before writing any content, you MUST complete these steps:
+
+1. READ THE SKILL: Review the paper-writer skill at .claude/skills/paper-writer/SKILL.md
+2. READ THE STYLE GUIDE: Study templates/paper_writing/lab_style_guide.md carefully
+3. REVIEW EXAMPLES: Browse paper_examples/ for formatting and language patterns:
+   - Look at sections/1.introduction.tex for language style
+   - Look at tables/*.tex for table formatting
+   - Look at commands/*.tex for macro usage
+4. VERIFY COMMAND TEMPLATES: Command templates (math.tex, general.tex, macros.tex) are pre-copied to paper_draft/commands/
+
+CRITICAL: Reference example papers for FORMATTING and LANGUAGE STYLE only.
+Do NOT copy content, phrasing, or narrative structure from the example papers.
+The examples are in a different research domain - focus only on presentation style.
+
+════════════════════════════════════════════════════════════════════════════════
+                            EXPERIMENT REPORT
+════════════════════════════════════════════════════════════════════════════════
+
+# System Prompt Saturation: When Longer Instructions Decrease Compliance
+
+## 1. Executive Summary
+
+**Question.** How does compliance with individual system-prompt rules change with (a) system-prompt length,
+(b) number of rules, (c) where a rule sits in the prompt, and (d) contradictory rules? Does the "saturation point"
+depend on model size?
+
+**Answer.** We ran 9 open instruction-tuned models (0.5B–14.7B; Qwen2.5, Llama-3.x, Qwen3) on 40 automatically
+checkable rules and 4 contradictory pairs. That came to 28,500 generations and 256,500 scored rule instances.
+Each of the four claims came out differently:
+
+1. **Length (H1): the direction is right but the effect is 3–6× larger than claimed.** We kept the rule count
+   fixed at 5 and padded the prompt with neutral reference text. Per-rule compliance then fell by **7.7 pp per
+   doubling** beyond 500 tokens, averaged over 7 models (95% CI 7.1–8.3), which is about **15% relative per
+   doubling**; the hypothesis said 2–5%. For models that are competent at short lengths the drop was 8–12.5 pp per
+   doubling. Qwen2.5-7B went from 0.83 with no padding to 0.24 at about 8k tokens. Most of this is about **where
+   the rules sit relative to the end of the prompt**, not raw length. When the same 5 rules were one block at the
+   *bottom* of a 4k-token prompt, right before the user turn, compliance was **+21 pp** above the same block in the
+   middle and +14 pp above the top (Exp F). A contiguous block anywhere also beat the same rules scattered through
+   the text.
+2. **Position (H2): only partly supported, and it depends on structure.** In a numbered rule list there is a
+   *primacy* effect: the first 20% of rules get about +5 pp (≈ +10% relative). The last 20% get **no** benefit and
+   are slightly worse (−2.8 pp). The edges-vs-middle ratio is only 1.04 (CI 1.02–1.06), far below the predicted
+   1.15–1.25. When rules are scattered through long text, both edges benefit and the end benefits most
+   (ratio 1.36, CI 1.23–1.49), which matches or exceeds the hypothesis. Models differ: Qwen3-8B shows *recency*
+   in lists, not primacy.
+3. **Conflicts (H3): the direction is right but the magnitude is 1.5–3× larger.** Adding the contradicting rule cut
+   compliance on each member of a pair by **30–83% relative** (pooled over 9 models; every one p < 1e-10, McNemar).
+   The hypothesis said 20–30%. Models seldom fail gracefully. For "under 80 words" vs "at least 300 words", 58–90%
+   of responses **satisfied neither**: they compromised at about 100–200 words. The drop is lopsided:
+   "be concise" lost 80% of its compliance while "explain thoroughly" lost only 30%. Rules that weren't part of
+   the conflict were barely affected.
+4. **Saturation by size (H4): not supported as stated.** No model has a sharp knee. Per-rule compliance starts
+   falling at N = 5 for every model and keeps falling roughly log-linearly up to N = 40. Larger models degrade more
+   slowly, but size alone doesn't predict it:
+   - 7–8B models keep 84–85% of their (chance-corrected) single-rule compliance at 10 rules and 67–72% at 20.
+   - Sub-3B models keep 58–73% at 10 rules and 36–56% at 20.
+   - Qwen2.5-14B is no better than Qwen2.5-3B/7B (74% retained at 10 rules).
+   - Qwen3-8B is in a class of its own: 0.92 per-rule compliance at 10 rules and 0.80 at 40.
+
+**Practical implication.** Every rule you add costs something, from the very first one. The cost grows with how far
+a rule sits from the end of a long prompt. Contradictory instructions are expensive and usually end in a
+compromise that satisfies neither. Putting the critical rules in a block at the **end** of a long system prompt was
+the single most effective mitigation we measured.
+
+## 2. Research Question & Motivation
+
+Hypothesis as given:
+- H1: compliance per rule drops 2–5% for each doubling of system-prompt length beyond 500 tokens;
+- H2: rules in the first and last 20% of the prompt are followed 15–25% more often than middle rules;
+- H3: adding conflicting rules (e.g. "be concise" + "explain thoroughly") drops compliance on both by 20–30%;
+- H4: sub-3B models hit saturation at 10 rules while 7B+ models sustain up to 20 before degrading.
+
+**Why it matters.** Deployed system prompts often run to thousands of tokens and dozens of rules: persona,
+formatting, safety, tool policy and reference material. Prompt authors need to know how many rules a model can
+carry, where to put the important ones, and what contradictions cost.
+
+**Gap.** The resource-gathering stage left no literature review or papers in this workspace, so the context below
+comes from background knowledge. IFEval (Zhou et al., 2023) scores 1–3 verifiable instructions in the *user* turn.
+"Curse of instructions" / ManyIFEval (Harada et al., 2024) shows the all-instructions-followed rate falls with
+instruction count. "Lost in the Middle" (Liu et al., 2023) documents U-shaped position effects for *retrieval*.
+FollowBench and ComplexBench add constraints step by step. None of these separates length, rule count, rule
+position and conflicts in the **system prompt** under a paired design with per-rule, chance-corrected metrics
+across a range of model sizes. This study does.
+
+## 3. Experimental Setup
+
+### Models
+All models ran locally with vLLM 0.32 using greedy decoding (temperature 0), max 1,024 new tokens, each model's own
+chat template, and seed 42. There were no API keys on this host, so commercial models could not be tested.
+
+| name | checkpoint | params | precision |
+|---|---|---|---|
+| qwen2.5-0.5b | Qwen/Qwen2.5-0.5B-Instruct | 0.5B | bf16 |
+| llama3.2-1b | unsloth/Llama-3.2-1B-Instruct | 1.2B | bf16 |
+| qwen2.5-1.5b | Qwen/Qwen2.5-1.5B-Instruct | 1.5B | bf16 |
+| qwen2.5-3b | Qwen/Qwen2.5-3B-Instruct-AWQ | 3.1B | AWQ int4 |
+| llama3.2-3b | AMead10/Llama-3.2-3B-Instruct-AWQ | 3.2B | AWQ int4 |
+| qwen2.5-7b | Qwen/Qwen2.5-7B-Instruct | 7.6B | bf16 |
+| llama3.1-8b | hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4 | 8.0B | AWQ int4 |
+| qwen3-8b | Qwen/Qwen3-8B-AWQ (thinking disabled) | 8.2B | AWQ int4 |
+| qwen2.5-14b | Qwen/Qwen2.5-14B-Instruct-AWQ | 14.7B | AWQ int4 |
+
+AWQ checkpoints were used where shared-GPU memory (≈5–13 GB slices) left no room for bf16. This mixes quantization
+with model size; see Limitations.
+
+### Materials
+- **User queries.** 100 open-ended Alpaca-cleaned instructions with no input field, filtered to
+  "Explain/Describe/What/How…" requests that have no length or format constraints of their own (`data/queries.json`).
+  Query *i* is used for item *i* in **every** condition, so all comparisons are paired.
+- **Rule bank** (`src/rules.py`): 40 rules that can all be satisfied at once, each with a deterministic checker.
+  - Start/end phrase (2).
+  - Keyword or phrase inclusion (≈20; e.g. mention "Zanzibar", "Fun fact:", "#StaySharp", the year 2031).
+  - Formatting (bold, `##` heading, numbered list, table, code block, quotation, [1]-style citation, URL).
+  - Punctuation (emoji, semicolon, question).
+  - Exclusions (no "!", no "very", "really", "however").
+- **Conflict pairs** (used only in Exp D):
+  - `length_hard`: "<80 words" vs "≥300 words".
+  - `length_soft`: "Be concise." (<150 words) vs "Explain thoroughly, with detail and examples." (≥250 words).
+  - `lists`: "bulleted list" vs "never use lists".
+  - `case`: "all lowercase" vs "all UPPERCASE" (≥97% of letters).
+- **Padding.** WikiText-103 validation paragraphs, introduced as "Reference material (background only)". They are
+  neutral to every rule and drawn at random for each item.
+
+### Experiments (3,600 prompts per model; `src/build_prompts.py`, seed 42)
+| exp | manipulation | cells × items |
+|---|---|---|
+| A (count) | N ∈ {0,1,2,5,10,15,20,30,40} rules as a numbered list (prompt 6–572 tokens) | 9×100 |
+| B (length) | N=5 rules, each a separate "Response rule:" paragraph inserted at random paragraph boundaries in padding; padding ∈ {0,0.5k,1k,2k,4k,8k} tokens | 6×100 |
+| D (conflict) | 4 background keyword rules + {X + filler rule, Y + filler rule, X + Y}; same order skeleton | 4 pairs×3×100 |
+| E (count at length) | N ∈ {10,20,40} interleaved in ~4k tokens of padding | 3×100 |
+| F (block placement) | 5 rules as one numbered block at the top / middle / bottom of ~1k or ~4k tokens of padding | 6×100 |
+
+Rule subsets and order are drawn at random for each item, so a rule's relative position is randomized
+independently of its identity. N = 0 gives each model's **base rate** for every rule, i.e. how often the response
+satisfies it unprompted. Exp E and Exp F were added after the first model (Qwen2.5-7B) had run A/B/D. They use
+separate RNG streams, so A/B/D prompts are byte-identical across models (this was checked).
+
+### Metrics and statistics
+- **Per-rule compliance**: the fraction of (response, rule) pairs where the checker passes. Also reported:
+  - the all-rules-followed rate;
+  - chance-corrected retention, (c(N) − base) / (c(1–2) − base).
+- **CIs**: item-clustered bootstrap over the 100 queries, 2,000 resamples.
+- **Regressions**: linear probability models with rule fixed effects (and model/condition fixed effects where
+  pooled), using cluster-robust standard errors by item.
+  - H1 slope: on log2(prompt tokens).
+  - H2: position bins first 20% / middle / last 20%.
+- **H3**: paired McNemar (exact binomial) tests, alone vs with the conflict; Holm correction across the 72
+  model × pair × rule tests and across the H1 per-model slopes.
+
+### Compute
+- 4× RTX A6000 (48 GB), shared with other users. We had one ~40 GB slice at the start and 5–13 GB slices after.
+- About 4.5 hours of generation in total. Wall-clock time per model ran from 20 min (0.5B) to over 2 h (8B AWQ on
+  a contended GPU with a 3.5 GB KV cache).
+- Because of contention, **not every model finished every experiment**:
+
+| experiment | models with complete data |
+|---|---|
+| A | all 9 |
+| D | all 9 |
+| B | 7: not qwen3-8b, qwen2.5-14b |
+| E, F | 6: not qwen2.5-7b, qwen3-8b, qwen2.5-14b |
+
+## 4. Results
+
+All tables are in `results/tables/`, figures in `figures/`, and the full printed analysis is in
+`results/analysis_output.txt`.
+
+### 4.1 Exp A — rule count (H4)
+
+![Exp A](figures/expA_count.png)
+
+Per-rule compliance (rules as a numbered list):
+
+| N | q0.5b | l1b | q1.5b | q3b | l3b | q7b | l8b | qwen3-8b | q14b |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | .30 | .74 | .51 | .88 | .97 | .94 | .97 | .96 | .98 |
+| 5 | .25 | .68 | .43 | .80 | .89 | .86 | .93 | .93 | .85 |
+| 10 | .23 | .57 | .35 | .73 | .77 | .82 | .84 | **.92** | .75 |
+| 20 | .19 | .47 | .27 | .56 | .61 | .67 | .73 | **.87** | .62 |
+| 40 | .14 | .36 | .19 | .41 | .39 | .48 | .53 | **.80** | .39 |
+
+Chance-corrected retention relative to N = 1–2 (`expA_saturation.csv`):
+
+| model | size | ret. N=10 | ret. N=20 | ret. N=40 | first N with retention < 90% |
+|---|---|---|---|---|---|
+| qwen2.5-0.5b | <3B | 0.59 | 0.36 | 0.12 | 5 |
+| llama3.2-1b | <3B | 0.73 | 0.56 | 0.37 | 5 |
+| qwen2.5-1.5b | <3B | 0.58 | 0.39 | 0.19 | 5 |
+| qwen2.5-3b | 3B | 0.79 | 0.58 | 0.37 | 5 |
+| llama3.2-3b | 3B | 0.77 | 0.59 | 0.31 | 5 |
+| qwen2.5-7b | ≥7B | 0.85 | 0.67 | 0.43 | 5 |
+| llama3.1-8b | ≥7B | 0.84 | 0.72 | 0.47 | 10 |
+| qwen3-8b | ≥7B | **0.93** | **0.89** | **0.80** | **20** |
+| qwen2.5-14b | ≥7B | 0.74 | 0.60 | 0.31 | 5 |
+
+- Hinge regressions find no consistent knee; the best breakpoints are scattered between 5 and 30 rules.
+- The "all rules followed" rate collapses to ≈0 by N = 15 for every model except Qwen3-8B (0.15 at N = 15).
+- **Length is confounded with count in Exp A** (40 rules ≈ 570 tokens). Exp E holds length at ~4k tokens instead.
+  There, compliance still falls with N for all 6 models that ran it. For N = 5/10/20/40:
+  - Llama-3.1-8B: 0.44 → 0.39 → 0.32 → 0.27
+  - Llama-3.2-3B: 0.44 → 0.38 → 0.30 → 0.24
+  - Qwen2.5-3B: 0.25 → 0.21 → 0.19 → 0.18
+  
+  The slope is flatter than in Exp A because the 4k padding has already pushed compliance toward the floor
+  (`expE_count_at_4k.csv`, `figures/expE_count_long.png`).
+
+**Verdict on H4:** not supported as stated. Only one 7B+ model (Qwen3-8B) comes close to the "sustains up to
+~20 rules" pattern: it keeps ≥90% retention through N = 15 and 0.89 at N = 20. The other three 7B+ models, like the
+small ones, fall below 90% retention by N = 5–10. There is no saturation knee at 10 for small models. Degradation is gradual from N ≈ 5 for every model. Bigger models do retain
+more, but within-family size ordering is not monotone (Qwen2.5-14B < 7B), and the model family/generation
+(Qwen3-8B) matters more than parameter count.
+
+### 4.2 Exp B — length with rule count fixed at 5 (H1)
+
+![Exp B](figures/expB_length.png)
+
+| padding (≈ total tokens) | q0.5b | l1b | q1.5b | q3b | l3b | q7b | l8b |
+|---|---|---|---|---|---|---|---|
+| 0 (~110) | .21 | .68 | .40 | .79 | .87 | .83 | .94 |
+| 500 (~530) | .14 | .49 | .20 | .57 | .75 | .66 | .86 |
+| 1000 | .14 | .40 | .18 | .41 | .65 | .51 | .79 |
+| 2000 | .12 | .29 | .15 | .31 | .55 | .39 | .68 |
+| 4000 | .14 | .26 | .14 | .25 | .44 | .30 | .44 |
+| 8000 | .13 | .19 | .13 | .18 | .37 | .24 | .41 |
+
+Slope per doubling of prompt length, ≥500 tokens only (rule fixed effects, item-clustered; `expB_slopes.csv`):
+
+| model | pp / doubling [95% CI] | relative / doubling | Holm p |
+|---|---|---|---|
+| qwen2.5-0.5b | −0.6 [−1.1, −0.1] | −4% (floor) | 0.02 |
+| llama3.2-1b | −8.0 [−9.1, −6.9] | −16% | <1e-30 |
+| qwen2.5-1.5b | −2.4 [−3.1, −1.6] | −12% | <1e-9 |
+| qwen2.5-3b | −10.0 [−11.2, −8.8] | −18% | <1e-50 |
+| llama3.2-3b | −9.7 [−10.9, −8.5] | −13% | <1e-50 |
+| qwen2.5-7b | −11.0 [−12.0, −9.9] | −17% | <1e-80 |
+| llama3.1-8b | −12.5 [−13.7, −11.4] | −15% | <1e-90 |
+| **pooled (7 models)** | **−7.7 [−8.3, −7.1]** | **−15%** | 2e-149 |
+
+**Verdict on H1:** the direction holds but the size is wrong. The decline is 3–6× steeper than 2–5% per doubling.
+It also starts *before* 500 tokens: the 0 → 500-token step alone costs 8–22 pp in competent models. The tiny
+models (0.5B, 1.5B) are already near their base rate with no padding, so their slopes are small.
+
+### 4.3 Position (H2), and Exp F: block placement
+
+![Position](figures/position.png)
+
+Compliance by relative position, pooled over models, with rule and condition fixed effects (`position.csv`):
+
+| structure | first 20% | middle | last 20% | (first+last)/2 ÷ middle [95% CI] | first vs mid | last vs mid |
+|---|---|---|---|---|---|---|
+| numbered list (Exp A, N≥10) | .550 | .489 | .465 | **1.04 [1.02, 1.06]** | +5.0 pp*** | −2.8 pp*** |
+| interleaved, N=5 (Exp B, ≥1k) | .365 | .287 | .412 | **1.36 [1.23, 1.49]** | +7.1 pp*** | +9.4 pp*** |
+| interleaved, ~4k (Exp E) | .239 | .180 | .212 | 1.25 [1.15, 1.35] | +6.0 pp*** | +4.9 pp*** |
+
+How models differ in the numbered-list format:
+- In 8 of 9 models the first 20% gain +3 to +13 pp and the last 20% lose 0 to −9 pp.
+  - Llama-3.1-8B has the strongest primacy effect: +12.8 pp for the first 20%, −5.2 pp for the last 20%.
+  - Llama-3.2-3B: +8.7 pp for the first 20%, −9.3 pp for the last 20%.
+- Qwen3-8B is the reverse: the first 20% are −8.7 pp and the last 20% are +2.1 pp.
+
+![Exp F](figures/expF_placement.png)
+
+**Exp F (the same 5 rules as one block, varying only where the block sits)**, pooled over models
+(`expF_place_tests.csv`, rule and model fixed effects):
+
+| prompt length | top vs middle | bottom vs middle |
+|---|---|---|
+| ~1k tokens | +1.7 pp (p = 0.11) | **+11.0 pp** [8.9, 13.1] |
+| ~4k tokens | +6.3 pp [4.1, 8.4] | **+20.8 pp** [18.6, 23.0] |
+
+Pooled compliance at ~4k tokens, ordered from best to worst:
+- block at the bottom: 0.55
+- block at the top: 0.40
+- block in the middle: 0.34
+- the same 5 rules scattered through the text (Exp B): 0.28
+
+Some individual models:
+- **Qwen2.5-3B:** 0.76 at the bottom, 0.27 in the middle, 0.44 at the top. Its no-padding score is 0.80, so a
+  bottom block almost fully recovers.
+- **Llama-3.1-8B:** 0.90 at the bottom, 0.73 in the middle, 0.76 at the top, but only 0.44 when the rules are
+  interleaved.
+
+Two separate things drive the "length" penalty in Exp B:
+1. **Distance from the end of the prompt.** A block right before the user turn is followed most often.
+2. **Scattering the rules among unrelated text.** A contiguous block beats interleaved rules at every
+   placement, and especially for Llama models.
+
+**Verdict on H2:** mixed.
+- In plain rule lists the edge advantage is small (≈4% relative) and comes only from the first rules. The last
+  rules are slightly *worse*, so the predicted 15–25% gain does not appear.
+- When rules are embedded in long text, the effect is U-shaped with the strongest effect at the end (38% relative),
+  which meets or exceeds the hypothesis.
+- For whole blocks, end placement dominates: +11 to +21 pp over the middle.
+
+### 4.4 Exp D — conflicting rules (H3)
+
+![Exp D](figures/expD_conflict.png)
+
+Pooled over 9 models (n = 900 paired items per row; `expD_conflict.csv`):
+
+| pair | rule | alone | with its contradiction | relative change [95% CI] |
+|---|---|---|---|---|
+| length_hard | <80 words | .72 | .12 | −83% [−87, −79] |
+| length_hard | ≥300 words | .89 | .15 | −83% [−87, −80] |
+| length_soft | be concise (<150 w) | .60 | .12 | −80% [−84, −75] |
+| length_soft | explain thoroughly (≥250 w) | .90 | .63 | **−30%** [−35, −25] |
+| lists | bulleted list | .94 | .60 | −36% [−43, −29] |
+| lists | no lists | .93 | .35 | −62% [−68, −55] |
+| case | all lowercase | .96 | .49 | −49% [−53, −44] |
+| case | ALL UPPERCASE | .85 | .39 | −54% [−58, −49] |
+
+All rows have p < 1e-10 (McNemar). After Holm correction, 66 of the 72 per-model tests remain significant.
+
+How models resolve the conflict (`expD_winner.csv`; "both" is impossible for these pairs):
+- **Length conflicts usually end in a compromise that satisfies neither rule.** For `length_hard`, "neither" ranges
+  from 58% (Qwen2.5-3B) to 90% (Llama-3.2-1B). Median length with both rules is 96–220 words, against ~50–90 for
+  the short rule alone and ~350–500 for the long rule alone (`expD_wordcounts.csv`).
+- **Format and case conflicts usually get resolved: one rule wins.** "Neither" is only 0–13% in 8 of the 9 models.
+  - The rule that wins is model-specific and stable: Llama-3.1-8B picks bullets 92% of the time.
+  - The *later* rule in the list does not systematically win; its order was randomized.
+- **The soft-length conflict is lopsided.** Every model leans toward "thorough": "concise" loses 80%, "thorough"
+  loses 30%. The 30% figure is the only one inside the hypothesized 20–30% band.
+- **Little effect on the other rules.** Background keyword rules move by only ≈0–8 pp between conflict and
+  no-conflict conditions, with no consistent sign (`expD_background.csv`).
+
+**Verdict on H3:** the direction holds, but the magnitude is 1.5–3× larger than the predicted 20–30%. For
+mutually exclusive rules, at most one can be followed, so a large drop is guaranteed. The informative results are
+that models often satisfy *neither* rule (for length) and that for soft conflicts the "thorough" instruction
+reliably wins.
+
+### 4.5 Qualitative error analysis
+- **Long prompts → rules silently dropped.** At 8k tokens, Qwen2.5-7B gives a well-formed, on-topic answer that
+  ignores most rules: emoji, "gracias", "velvet" and code block are missing, while bold survives
+  (`B|L8000|5`). It does not get confused by the padding; it just behaves as if the rules weren't there.
+  - Rules that are naturally common survive: bold, numbered lists, the exclusion rules.
+  - Arbitrary keywords die first: "velvet", "pineapple", "indeed ×2" and "consequently" all reach ≈0 at 4–8k
+    (per-rule breakdown in `results/rule_scores.parquet`).
+- **Conflict compromises.** Given "<80 words" + "≥300 words", Qwen2.5-7B wrote 143 words. Given "lowercase" +
+  "UPPERCASE" plus a "gracias" keyword rule, it wrote "orion" in lowercase and then switched to an **all-caps
+  Spanish answer**. Satisfying one rule bled into a strange interpretation of another.
+- **Exclusion rules carry no signal.** Exclusion rules ("never use *really*") have base rates of 81–99%, so they
+  look "followed" no matter what. All headline effects are driven by the inclusion and format rules. The
+  chance-corrected retention metric accounts for this.
+
+### 4.6 Reproducibility check
+Qwen2.5-1.5B was re-run on all of Exp A (900 prompts, 12,300 rule checks) in a separate process on a different GPU,
+with a different KV-cache size and therefore different batching. Prompts and greedy decoding were identical.
+- Only **13% of responses were byte-identical**, because vLLM greedy decoding is not batch-invariant and small
+  numeric differences change the text.
+- Even so, **93.7% of individual rule checks agreed**, and mean compliance was 0.2503 vs 0.2496 (**−0.07 pp**).
+  See `results/rerun_check.txt`.
+
+Aggregate effects are therefore stable against decoding noise, but no single response should be treated as
+deterministic.
+
+## 5. Discussion
+
+- **The rule-count curve is smooth, not a cliff.** Even the best model loses compliance from the second rule
+  onward. The hypothesis pictured a capacity that fills up (saturation at 10 or 20 rules). What we see looks more
+  like attention being diluted: each additional rule or each additional 1k tokens of distance lowers the
+  probability that any given rule shapes the output. Model quality sets the *level* and the *rate*, but no tested
+  model is flat to 20 rules. Qwen3-8B comes closest (0.92 → 0.87 from 10 to 20 rules), which suggests newer
+  instruction-tuning recipes matter more than raw scale. Qwen2.5-14B (AWQ) did *not* beat Qwen2.5-7B (bf16). This
+  could be a quantization effect (Limitations), but it fits the view that scale alone does not buy rule capacity.
+- **Length hurts through distance and burial.** Comparing Exp B and Exp F, the same 5 rules in a 4k-token prompt
+  are followed (pooled over 6 models):
+  - 28% of the time when scattered;
+  - 34% as a block in the middle;
+  - 40% as a block at the top;
+  - 55% as a block at the bottom, next to the user turn. Chat models seem to weight the most recent system text heavily
+  when deciding output format and content. For plain short lists, though, the first rules win. These two
+  findings reconcile through prompt length: in a short list every rule is close to the end, so the order effect
+  is primacy; in a long prompt, distance from the end dominates.
+- **Conflicts are worse than the hypothesis expected.** "Neither" outcomes (compromises) are common for numeric
+  constraints, so a contradictory pair can do worse than dropping one of the two rules.
+
+## 6. Limitations
+
+- **Open models only.** There were no API keys, so we could not test GPT/Claude/Gemini. Frontier models may be much
+  more robust; Qwen3-8B already is.
+- **Quantization is confounded with size.** The 3B, 8B and 14B models are AWQ int4 while 0.5B–1.5B and 7B are
+  bf16. The 14B < 7B result in particular could partly reflect AWQ.
+- **Incomplete coverage.** Not every model ran every experiment (see Setup).
+  - Exp B covers 7 models.
+  - Exp E and F cover 6 models (0.5B–3B plus Llama-3.1-8B).
+  - Qwen3-8B and Qwen2.5-14B have only Exps A and D.
+- **Artificial rules.** The rules are synthetic and verifiable: arbitrary keywords and formats. Real system-prompt
+  rules (tone, refusals, tool policy) may behave differently. Inclusion rules are harder than "natural" rules, and
+  exclusion rules are near ceiling.
+- **Padding choice.** The padding is encyclopedic text labelled as background. Realistic padding such as tool
+  documentation or policies might compete with rules more, or less.
+- **Exp A confound.** In Exp A, count and length go up together (40 rules ≈ 570 tokens). Exp E addresses this only
+  for models that ran it.
+- **One pass per model.** Each model was run once with greedy decoding. Run-to-run variance from batch
+  non-invariance was checked on one model only. The CIs cover query sampling, not decoding noise.
+- **Single-query responses.** We tested only single-turn, ~100–500-word answers; multi-turn dynamics were not
+  tested.
+
+## 7. Conclusions & Next Steps
+
+System-prompt compliance degrades **continuously**. We measured about −7 pp (≈−15% relative) per doubling of
+prompt length at a fixed rule count, a steady decline with every rule added, and 30–83% losses when rules
+contradict. That is steeper than all four hypothesized magnitudes. The predicted size thresholds (10 vs 20 rules)
+did not appear. Model recipe (Qwen3) mattered more than parameter count. The most actionable finding is
+placement: in long system prompts, **put the rules that must be followed in one block at the end**. In short rule
+lists, put the most important rules first.
+
+Follow-ups:
+1. Repeat with frontier API models and bf16 versions of the 3B/8B/14B models.
+2. Use realistic rule types (tone, refusal, tool-use policies) judged by an LLM.
+3. Cross placement × count × length fully, including "repeat the critical rules at the end".
+4. Run multi-turn sessions to see whether compliance decays over turns.
+5. Test whether explicit priority markers ("MOST IMPORTANT") or a stated conflict-resolution order fix the
+   both-fail compromises.
+
+## References
+- Zhou et al. (2023). *Instruction-Following Evaluation for Large Language Models* (IFEval).
+- Harada et al. (2024). *Curse of Instructions: Large Language Models Cannot Follow Multiple Instructions at Once.*
+- Liu et al. (2023). *Lost in the Middle: How Language Models Use Long Contexts.*
+- Jiang et al. (2023). *FollowBench*; Wen et al. (2024). *ComplexBench.*
+- Data: yahma/alpaca-cleaned; Salesforce/wikitext (WikiText-103). Tools: vLLM 0.32, PyTorch 2.13, transformers
+  5.19, pandas 3.1, statsmodels 0.15, SciPy 1.18, Python 3.12.
+
+
+════════════════════════════════════════════════════════════════════════════════
+                            RESEARCH PLAN
+════════════════════════════════════════════════════════════════════════════════
+
+# Planning: System Prompt Saturation
+
+## Motivation & Novelty Assessment
+
+### Why This Research Matters
+Production system prompts routinely run to thousands of tokens and dozens of rules (personas, formatting,
+safety, tool policies). Practitioners assume every rule added is a rule followed. If per-rule compliance decays with
+length, rule count, rule position, or rule conflicts, prompt authors need quantitative guidance on how many rules a
+model of a given size can carry and where to put the important ones.
+
+### Gap in Existing Work
+The resource-finder stage produced no `literature_review.md`, `papers/`, `datasets/` or `code/` in this workspace
+(and no API keys are configured), so the review below is from background knowledge. Related work:
+IFEval (Zhou et al., 2023) measures compliance with 1–3 verifiable instructions in the *user* turn; "Lost in the
+Middle" (Liu et al., 2023) shows U-shaped position effects for *retrieval*; ManyIFEval / "Curse of instructions"
+(Harada et al., 2024/25) shows that the probability of following *all* instructions falls with their count;
+FollowBench / ComplexBench add constraints incrementally. What is missing is a single controlled study that, in the
+**system prompt**, separates (a) total length (holding rule count fixed), (b) rule count, (c) rule position, and
+(d) contradictory rules, and does so across a size ladder of open models with *per-rule* (not all-or-nothing) metrics.
+
+### Our Novel Contribution
+A factorial, programmatically-scored benchmark of 40 mutually compatible verifiable system-prompt rules plus
+4 conflict pairs, run on 9 open instruction models from 0.5B to 14B, with paired designs (same user queries across
+conditions) and baseline (no-rule) rates to correct for rules that are satisfied by chance.
+
+### Experiment Justification
+- **Exp A (rule count N ∈ {0,1,2,5,10,15,20,30,40})**: tests the saturation claim (sub-3B saturate at ~10 rules,
+  7B+ sustain ~20). N=0 gives base rates for every rule.
+- **Exp B (length, N=5 fixed, neutral filler to 0/500/1k/2k/4k/8k tokens)**: isolates length from rule count to test
+  "2–5% per doubling beyond 500 tokens".
+- **Position analysis (Exp A N≥10 and Exp B)**: rules are randomly ordered/inserted, so relative position is
+  randomized; tests "first/last 20% followed 15–25% more often than middle".
+- **Exp D (conflicts)**: X-only vs Y-only vs X+Y for 4 contradictory pairs, holding rule count fixed; tests
+  "conflict drops compliance on both by 20–30%".
+
+## Research Question
+How does per-rule compliance with system-prompt rules depend on prompt length, rule count, rule position and
+rule conflicts, and does the saturation point scale with model size?
+
+## Hypothesis Decomposition
+- H1: per-rule compliance falls 2–5 pp (relative) per doubling of system prompt length beyond 500 tokens (fixed N).
+- H2: rules in the first and last 20% of the prompt are followed 15–25% (relative) more often than middle rules.
+- H3: adding a contradicting rule lowers compliance on each member of the pair by 20–30% (relative).
+- H4: per-rule compliance in models <3B degrades past ~10 rules; ≥7B models hold up to ~20 rules.
+
+## Proposed Methodology
+- Models (local, vLLM, greedy, temperature 0): Qwen2.5-Instruct 0.5B/1.5B/3B/7B/14B(AWQ), Llama-3.2-Instruct 1B/3B,
+  Llama-3.1-8B-Instruct, Qwen3-8B (non-thinking). Real models; no simulation. No API key available.
+- User queries: 100 open-ended instructions from Alpaca-cleaned (no input field), same 100 in every cell (paired).
+- Rules: 40 verifiable rules (keyword inclusion, start/end phrases, formatting, exclusion, punctuation).
+  Each scored by a deterministic Python checker. Random subset and order per item (seeded).
+- Filler: Wikipedia (WikiText-103) paragraphs presented as reference material; rules inserted as standalone
+  "Response rule:" paragraphs at random paragraph boundaries.
+- Metrics: per-rule compliance (mean of binary checks), baseline-corrected lift over N=0, all-rules-followed rate.
+- Statistics: item-clustered bootstrap 95% CIs; mixed/fixed-effect logistic regressions with rule fixed effects
+  (log2 length slope; position bins; conflict indicator); McNemar-style paired tests for conflict; Holm correction
+  across the hypothesis families. α = 0.05.
+
+## Expected Outcomes
+Support for H1: negative log2-length slope of 2–5% relative beyond 500 tokens. H2: U-shape with edge/middle ratio
+1.15–1.25. H3: conflict ratio 0.70–0.80. H4: knee at ~10 rules for small, ~20 for large models.
+Any other pattern (no slope, monotone position effect, a model winning one side of a conflict) refutes/qualifies.
+
+## Timeline
+Setup+prompt build 45 min; generation 2–4 h (shared GPUs); scoring/analysis 1 h; report 45 min.
+
+## Potential Challenges
+Shared GPUs (one 48 GB GPU reserved with a holder; small models on ~5 GB slices); checkers may be too strict/lenient
+(audit samples); filler content could confound (use neutral encyclopedic text, randomized per item).
+
+## Success Criteria
+All four hypotheses tested with CIs on ≥6 models; report states clearly which are supported.
+
+## Deviations from the plan (recorded during execution)
+- **Added Exp E** (N ∈ {10,20,40} rules interleaved in ~4k tokens of padding) after the first model ran, to separate
+  rule count from prompt length. **Added Exp F** (a 5-rule block at the top/middle/bottom of 1k/4k-token prompts) to
+  separate distance-from-end from interleaving. Both use separate RNG streams, so A/B/D prompts are unchanged.
+- **Quantization.** Shared GPUs had only 5–13 GB free for most of the session. The 3B, 8B and 14B models (and
+  Qwen3-8B) were therefore run as AWQ int4 checkpoints. The 0.5B–1.5B and 7B models are bf16.
+- **Coverage.**
+  - Qwen3-8B and Qwen2.5-14B completed only Exps A and D; their long-prompt runs could not get enough KV-cache
+    memory in time.
+  - Qwen2.5-7B lacks Exps E and F.
+- **Exp D metrics.** The hard conflicts are mutually exclusive by construction, so the analysis added "winner"
+  (X-only / Y-only / neither) rates and word-count distributions to the planned relative-drop metric.
+
+
+════════════════════════════════════════════════════════════════════════════════
+                          LITERATURE REVIEW
+════════════════════════════════════════════════════════════════════════════════
+
+No literature_review.md found
+
+════════════════════════════════════════════════════════════════════════════════
+                          PAPER REQUIREMENTS
+════════════════════════════════════════════════════════════════════════════════
+
+Generate a complete academic paper with the following structure:
+
+1. TITLE
+   - Clear, specific, informative
+   - Should convey main finding or contribution
+
+2. AUTHOR
+   - Use this exact author line in the \author{} block: NeuriCo
+
+3. ABSTRACT (150-250 words)
+   - Problem statement
+   - Approach
+   - Key results
+   - Significance
+
+4. INTRODUCTION
+   - Research problem and motivation
+   - Gap in existing work
+   - Our contribution (be specific)
+   - Paper organization
+
+5. RELATED WORK
+   - Organized by theme/approach
+   - Position our work relative to prior work
+   - Cite papers from literature review
+
+6. METHODOLOGY
+   - Clear description of approach
+   - Experimental setup
+   - Datasets used
+   - Evaluation metrics
+   - Baselines
+
+7. RESULTS
+   - Present results with tables and figures
+   - Statistical analysis
+   - Comparison to baselines
+   - Ablation studies (if applicable)
+
+8. DISCUSSION
+   - Interpretation of results
+   - Limitations
+   - Broader implications
+
+9. CONCLUSION
+   - Summary of contributions
+   - Key findings
+   - Future work
+
+10. REFERENCES
+   - BibTeX format
+   - All cited papers
+
+════════════════════════════════════════════════════════════════════════════════
+                          OUTPUT FORMAT
+════════════════════════════════════════════════════════════════════════════════
+
+Create a MODULAR LaTeX project with the following directory structure:
+
+paper_draft/
+├── main.tex              # Main file that imports all sections
+├── references.bib        # BibTeX references
+├── sections/
+│   ├── abstract.tex      # Abstract content
+│   ├── introduction.tex  # Introduction section
+│   ├── related_work.tex  # Related work section
+│   ├── methodology.tex   # Methodology section
+│   ├── results.tex       # Results section
+│   ├── discussion.tex    # Discussion section
+│   └── conclusion.tex    # Conclusion section
+├── figures/              # Directory for any generated figures
+├── tables/               # Directory for complex standalone tables
+└── appendix/             # Directory for appendix sections (if needed)
+
+INSTRUCTIONS:
+1. First, create the directory structure above (mkdir -p paper_draft/sections paper_draft/figures paper_draft/tables paper_draft/appendix)
+2. Write main.tex using the EXACT preamble for NEURIPS:
+
+   \documentclass{article}
+   \usepackage[final]{neurips_2025}  % NEURIPS style (neurips_2025.sty is in paper_draft/)
+   \usepackage[hidelinks]{hyperref}  % REQUIRED: clickable links
+   \usepackage{booktabs}  % REQUIRED: professional tables
+   \usepackage{graphicx}
+   \usepackage{amsmath,amssymb}
+
+   % Import command files
+   \input{commands/math}
+   \input{commands/general}
+   \input{commands/macros}
+
+   % Use this bibliography style:
+   \bibliographystyle{plainnat}
+
+   \author{NeuriCo}
+
+   - Use \input{sections/...} to include each section
+   - Use \bibliography{references} for references
+3. Write each section file with COMPLETE content (no placeholders)
+4. Each section file should include its \section{} command
+5. Write references.bib with all citations in BibTeX format
+6. After writing all files, compile the paper:
+   cd paper_draft && pdflatex -interaction=nonstopmode main.tex && bibtex main && pdflatex -interaction=nonstopmode main.tex && pdflatex -interaction=nonstopmode main.tex
+
+This modular structure allows humans to easily:
+- Edit individual sections without navigating a large file
+- Track changes per section
+- Reuse sections across different paper versions
+
+════════════════════════════════════════════════════════════════════════════════
+                          QUALITY REQUIREMENTS
+════════════════════════════════════════════════════════════════════════════════
+
+- Academic tone throughout
+- All claims must be supported by data from the experiment report
+- Proper citations using \cite{} commands
+- Clear figures and tables with proper captions
+- NO placeholder text - every section must have real content
+- The paper MUST compile without errors
+- If compilation fails, debug and fix the LaTeX errors
+
+════════════════════════════════════════════════════════════════════════════════
+                          LAB WRITING STYLE
+════════════════════════════════════════════════════════════════════════════════
+
+Follow these lab-specific conventions to match our paper style:
+
+1. LANGUAGE STYLE:
+   - Use active voice: "We propose", "We examine", "We focus on"
+   - Be direct and confident: "Our main question is...", "We hypothesize that..."
+   - State things clearly and simply - prefer plain language over jargon
+   - Use bold questions as paragraph organizers: {\bf what is X?}
+   - Include specific quantitative claims: "8.97% over baseline"
+   - Avoid fancy wording: "utilize" → "use", "facilitate" → "help"
+
+2. INTRODUCTION STRUCTURE:
+   - Engaging hook (get to the point quickly)
+   - Problem importance
+   - Gap identification
+   - Your approach with method figure reference
+   - Quantitative preview of results
+   - Contribution bullets (3-4 items, action verbs)
+
+3. CONTRIBUTION LISTS:
+   \begin{itemize}[leftmargin=*,itemsep=0pt,topsep=0pt]
+       \item We propose...
+       \item We conduct...
+       \item We complement...
+   \end{itemize}
+
+4. MODULAR COMMANDS STRUCTURE:
+   Command templates are pre-copied to paper_draft/commands/:
+   - math.tex: Math notation macros
+   - general.tex: Formatting macros
+   - macros.tex: Project-specific term definitions (customize this for your paper)
+
+   In main.tex, include:
+   \input{commands/math}
+   \input{commands/general}
+   \input{commands/macros}
+
+5. REFERENCE CONVENTIONS:
+   Use reference macros from math.tex:
+   - \figref{fig:name} for "figure 1" (lowercase, in-sentence)
+   - \Figref{fig:name} for "Figure 1" (capitalized, start of sentence)
+   - \secref{sec:name} for "section 2"
+
+6. TEXT FORMATTING:
+   - Use \para{Header text} for bold paragraph headers
+   - Define method/dataset names with \textsc and \xspace:
+     \newcommand{\methodname}{\textsc{MethodName}\xspace}
+
+7. TABLE FORMATTING:
+   - Use booktabs package (no vertical lines)
+   - Use \resizebox{\textwidth}{!}{...} for wide tables
+   - Use @{} to remove padding at table edges
+   - Use \cmidrule(lr){x-y} for sub-headers
+   - Use \textsc{} for dataset/method names in headers
+   - Bold best results with {\bf ...}
+
+8. FIGURE FORMATTING:
+   - Use 0.32\textwidth for 3-column subfigures
+   - Use 0.95\linewidth for full-width figures
+   - Use \input{figures/legend} for shared legends
+   - Write self-contained captions explaining key observations
+
+9. RESULTS PRESENTATION:
+   - Define \increase and \decrease for colored arrows (green up, red down)
+   - Bold best results in tables
+   - Report confidence intervals when available
+
+10. ALGORITHM STYLING:
+    - Use algpseudocode with [noend]
+    - Use \triangleright for comments
+
+11. HYPERLINKS (REQUIRED):
+    - Always use \usepackage[hidelinks]{hyperref} or with colored links
+    - All citations, section refs, figure refs, table refs must be clickable
+    - This is essential for reader navigation
+
+════════════════════════════════════════════════════════════════════════════════
+                          WORKFLOW: REVIEW AND REFLECT
+════════════════════════════════════════════════════════════════════════════════
+
+Before calling finish, you MUST complete these review steps:
+
+1. REVIEW RESOURCES (at the start):
+   - Read .claude/skills/paper-writer/SKILL.md for detailed guidance
+   - Study templates/paper_writing/lab_style_guide.md for style conventions
+   - Browse paper_examples/ for formatting and language patterns
+
+2. SELF-REFLECTION (before finishing):
+   After writing all sections, review your work against these criteria:
+
+   LANGUAGE CHECK:
+   - [ ] Is the writing clear and jargon-free?
+   - [ ] Are claims specific with quantitative support?
+   - [ ] Is active voice used throughout?
+
+   FORMATTING CHECK:
+   - [ ] Does main.tex include \input{commands/math}, \input{commands/general}, \input{commands/macros}?
+   - [ ] Is hyperref package included for clickable references?
+   - [ ] Do tables use booktabs (no vertical lines)?
+   - [ ] Are best results bolded in tables?
+   - [ ] Are figures/tables properly captioned?
+
+   STRUCTURE CHECK:
+   - [ ] Does introduction follow: hook → importance → gap → approach → preview → contributions?
+   - [ ] Are contribution bullets specific with action verbs?
+   - [ ] Does the paper compile without errors?
+
+3. FIX ISSUES:
+   - Address any issues found in the self-reflection
+   - Re-compile and verify the PDF looks correct
+
+Only after completing this review should you consider the paper finished.

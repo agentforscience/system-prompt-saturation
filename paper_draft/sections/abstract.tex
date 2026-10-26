@@ -1,0 +1,12 @@
+Deployed system prompts often run to thousands of tokens and dozens of rules, and prompt authors usually assume that every rule they write will be followed.
+We test this assumption with a controlled, automatically scored benchmark.
+It contains 40 mutually compatible rules and 4 contradictory rule pairs, and it varies system-prompt length, rule count, rule position, and rule conflicts independently under a paired design.
+We run 9 open instruction-tuned models (0.5B--14.7B parameters; Qwen2.5, Llama-3.x, Qwen3), which gives 28,500 generations and 256,500 scored rule instances.
+Compliance degrades continuously, and in every case more steeply than a common practitioner hypothesis predicts.
+With the rule count fixed at five, per-rule compliance falls by 7.7 percentage points (pp) per doubling of prompt length beyond 500 tokens (95\% CI 7.1--8.3), about 15\% relative per doubling.
+Per-rule compliance declines from five rules onward in every model, with no sharp saturation point.
+Adding a contradicting rule cuts compliance on each member of a pair by 30--83\%, and for length conflicts 58--90\% of responses satisfy neither rule.
+Position effects depend on structure: short rule lists show mild primacy, but in long prompts distance from the end dominates.
+Moving the same five rules from the middle to the end of a 4k-token prompt raises compliance by 21\pp.
+Model recipe matters more than scale: \qwenthree keeps 80\% per-rule compliance at 40 rules, while \qfourteen does no better than \qseven.
+Our results suggest one concrete mitigation: put critical rules in a single block at the end of long system prompts.

@@ -1,0 +1,9 @@
+unsloth/Meta-Llama-3.1-8B-Instruct llama3.1-8b 26
+Qwen/Qwen3-8B qwen3-8b 26
+Qwen/Qwen2.5-14B-Instruct-AWQ qwen2.5-14b 24
+Qwen/Qwen2.5-7B-Instruct qwen2.5-7b 26
+Qwen/Qwen2.5-3B-Instruct qwen2.5-3b 20
+unsloth/Llama-3.2-3B-Instruct llama3.2-3b 20
+Qwen/Qwen2.5-1.5B-Instruct qwen2.5-1.5b 14
+unsloth/Llama-3.2-1B-Instruct llama3.2-1b 14
+Qwen/Qwen2.5-0.5B-Instruct qwen2.5-0.5b 12

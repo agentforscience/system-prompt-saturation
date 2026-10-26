@@ -1,0 +1,2 @@
+Qwen/Qwen2.5-3B-Instruct qwen2.5-3b 9 --kv-gb 2.5
+unsloth/Llama-3.2-3B-Instruct llama3.2-3b 9.5 --kv-gb 3

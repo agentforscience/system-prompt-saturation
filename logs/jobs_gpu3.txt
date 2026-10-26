@@ -1,0 +1,1 @@
+Qwen/Qwen2.5-1.5B-Instruct qwen2.5-1.5b 5.2 --max-num-seqs 32 --batched-tokens 2048

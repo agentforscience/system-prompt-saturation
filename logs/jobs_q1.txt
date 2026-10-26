@@ -1,0 +1,4 @@
+hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4 llama3.1-8b 13
+Qwen/Qwen3-8B-AWQ qwen3-8b 13
+Qwen/Qwen2.5-14B-Instruct-AWQ qwen2.5-14b 15
+Qwen/Qwen2.5-7B-Instruct qwen2.5-7b 22

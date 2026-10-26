@@ -1,0 +1,46 @@
+\section{Introduction}
+\label{sec:intro}
+
+System prompts have become the main way to control deployed language models.
+A typical production system prompt sets a persona, fixes output formats, lists safety and tool-use policies, and often includes pages of reference material.
+These prompts can reach thousands of tokens and contain dozens of rules.
+Prompt authors tend to treat each rule as free: write it down, and the model will follow it.
+
+{\bf Is this assumption true?}
+If compliance with each rule drops as the prompt grows, as rules accumulate, as rules move into the middle of the prompt, or when rules contradict each other, then prompt authors need numbers.
+They need to know how many rules a model can carry, where to put the rules that matter, and what a contradiction costs.
+A common practitioner hypothesis states these costs concretely.
+It claims that per-rule compliance drops 2--5\% per doubling of prompt length beyond 500 tokens (H1); that rules in the first and last 20\% of the prompt are followed 15--25\% more often than middle rules (H2); that adding a conflicting rule lowers compliance on both rules by 20--30\% (H3); and that models below 3B parameters saturate at about 10 rules while 7B+ models sustain about 20 (H4).
+
+{\bf What is missing in prior work?}
+Instruction-following benchmarks such as IFEval~\cite{zhou2023ifeval} score a few verifiable instructions placed in the {\em user} turn.
+Work on many simultaneous instructions~\cite{harada2024curse,jiang2024followbench,wen2024complexbench} shows that the chance of following {\em all} of them falls with their number, but it does not separate count from prompt length or position.
+Work on long contexts~\cite{liu2024lost} documents U-shaped position effects for {\em retrieval}, not for rules that must shape the output.
+No existing study separates length, rule count, position, and conflicts inside the {\em system prompt}, with per-rule and chance-corrected metrics, across a range of model sizes.
+
+{\bf Our approach.}
+We build a benchmark of 40 rules that can all be satisfied at once, each with a deterministic checker, plus 4 pairs of contradictory rules.
+We run five experiments (\tabref{tab:design}) that vary one factor at a time: rule count (\expA), prompt length at a fixed rule count (\expB), conflicts (\expD), rule count at a fixed long length (\expE), and placement of a contiguous rule block (\expF).
+Every condition uses the same 100 user queries, so all comparisons are paired.
+A zero-rule condition gives each model's base rate for every rule, which lets us correct for rules that responses satisfy by chance.
+
+{\bf What do we find?}
+Compliance degrades continuously and more steeply than the hypothesis predicts.
+Holding the rule count at five, per-rule compliance falls by 7.7\pp per doubling of prompt length beyond 500 tokens (pooled over 7 models; about 15\% relative, versus the predicted 2--5\%).
+\qseven drops from 0.83 with no padding to 0.24 at about 8k tokens.
+Much of this length penalty comes from where the rules sit: the same five-rule block placed at the end of a 4k-token prompt is followed 20.8\pp more often than when it sits in the middle.
+In plain rule lists, position effects are small (edge-to-middle ratio 1.04) and come only from primacy.
+A contradicting rule cuts compliance on each member of a pair by 30--83\%, and for length conflicts most responses compromise and satisfy neither rule.
+Finally, no model shows a saturation knee: compliance starts falling at five rules for every model.
+Larger models degrade more slowly, but \qwenthree (0.80 per-rule compliance at 40 rules) far outperforms \qfourteen (0.39), so model recipe matters more than parameter count.
+
+Our contributions are:
+\begin{itemize}[leftmargin=*,itemsep=0pt,topsep=0pt]
+    \item We build a controlled benchmark of 40 compatible, automatically checkable system-prompt rules and 4 conflict pairs, with paired queries and per-rule base rates.
+    \item We conduct five factorial experiments on 9 open models (0.5B--14.7B) and test four quantitative hypotheses about length, position, conflicts, and saturation; all four are either refuted in magnitude or only partly supported.
+    \item We separate the length penalty into two parts, distance from the end of the prompt and burial among unrelated text, and show that a contiguous rule block at the end of the prompt recovers most of the loss.
+    \item We characterize how models resolve contradictions: numeric conflicts mostly end in compromises that satisfy neither rule, while format conflicts are resolved by a stable, model-specific winner.
+\end{itemize}
+
+The rest of the paper is organized as follows.
+\Secref{sec:related} reviews related work, \secref{sec:method} describes the benchmark and experiments, \secref{sec:results} reports results for each hypothesis, \secref{sec:discussion} discusses implications and limitations, and \secref{sec:conclusion} concludes.

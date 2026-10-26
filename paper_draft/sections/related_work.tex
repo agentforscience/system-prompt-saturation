@@ -1,0 +1,25 @@
+\section{Related Work}
+\label{sec:related}
+
+\para{Verifiable instruction following.}
+IFEval~\cite{zhou2023ifeval} introduced instructions whose compliance can be checked by code, such as ``use at least 300 words'' or ``do not use commas.''
+InFoBench~\cite{qin2024infobench} decomposes instructions into checklists of requirements.
+These benchmarks place one to three instructions in the user turn.
+We borrow the idea of deterministic checkers but move the rules into the system prompt, scale their number to 40, and vary their surroundings.
+
+\para{Many simultaneous instructions.}
+FollowBench~\cite{jiang2024followbench} and ComplexBench~\cite{wen2024complexbench} add constraints step by step and find that performance falls as constraints accumulate.
+\citet{harada2024curse} show that the rate of following {\em all} instructions falls roughly as the product of per-instruction success rates.
+Our results agree that the all-rules-followed rate collapses quickly (to near zero by 15 rules for 8 of 9 models).
+Unlike this line of work, we report {\em per-rule}, chance-corrected compliance, which reveals that each individual rule also becomes less likely to be followed as rules accumulate.
+We also separate rule count from prompt length, which grow together when rules are simply appended.
+
+\para{Position effects in long contexts.}
+\citet{liu2024lost} show that models retrieve information best when it appears at the start or end of a long context, and worst in the middle.
+It is natural to expect the same U-shape for instructions.
+We find that this holds only partly: in long prompts the end of the prompt dominates, while in short numbered lists only the first rules gain.
+
+\para{System prompts and instruction priority.}
+\citet{wallace2024hierarchy} train models to prioritize system-level instructions over conflicting user instructions.
+\citet{li2024instability} show that models drift away from system-prompt personas over long dialogs.
+We study a complementary question: how well models follow many rules {\em within} a single system prompt, and what happens when two of those rules contradict each other.

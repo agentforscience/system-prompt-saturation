@@ -1,0 +1,2 @@
+AMead10/Llama-3.2-3B-Instruct-AWQ llama3.2-3b 4.4 --kv-gb 1.6 --max-num-seqs 24 --exps A,D
+AMead10/Llama-3.2-3B-Instruct-AWQ llama3.2-3b 4.4 --kv-gb 1.6 --max-num-seqs 24

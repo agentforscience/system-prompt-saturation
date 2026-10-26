@@ -1,0 +1,5 @@
+Qwen/Qwen2.5-14B-Instruct-AWQ qwen2.5-14b 13 --kv-gb 2.5 --exps A,D
+Qwen/Qwen3-8B-AWQ qwen3-8b 10 --kv-gb 3 --exps A,D
+Qwen/Qwen2.5-7B-Instruct qwen2.5-7b 18 --kv-gb 2
+Qwen/Qwen2.5-14B-Instruct-AWQ qwen2.5-14b 13.5 --kv-gb 3
+Qwen/Qwen3-8B-AWQ qwen3-8b 10.5 --kv-gb 3.5

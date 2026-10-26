@@ -1,0 +1,1 @@
+Qwen/Qwen2.5-1.5B-Instruct rerun_qwen2.5-1.5b 4.4 --kv-gb 1.0 --exps A --max-num-seqs 32

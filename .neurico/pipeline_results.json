@@ -1,0 +1,18 @@
+{
+  "success": true,
+  "stages": {
+    "resource_finder": {
+      "success": true,
+      "skipped": true
+    },
+    "experiment_runner": {
+      "success": true,
+      "return_code": 0,
+      "elapsed_time": 18099.548100948334,
+      "log_file": "/data/summereunann/neurico-workspaces/system_prompt_saturation_20261023_120001_cd90ef12/logs/execution_claude.log",
+      "transcript_file": "/data/summereunann/neurico-workspaces/system_prompt_saturation_20261023_120001_cd90ef12/logs/execution_claude_transcript.jsonl",
+      "background_processes_terminated": false
+    }
+  },
+  "work_dir": "/data/summereunann/neurico-workspaces/system_prompt_saturation_20261023_120001_cd90ef12"
+}

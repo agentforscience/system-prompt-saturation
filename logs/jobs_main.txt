@@ -1,0 +1,9 @@
+Qwen/Qwen2.5-0.5B-Instruct qwen2.5-0.5b 4 --kv-gb 2
+Qwen/Qwen2.5-1.5B-Instruct qwen2.5-1.5b 7 --kv-gb 3
+unsloth/Llama-3.2-1B-Instruct llama3.2-1b 6.5 --kv-gb 3
+Qwen/Qwen2.5-3B-Instruct qwen2.5-3b 10 --kv-gb 3
+unsloth/Llama-3.2-3B-Instruct llama3.2-3b 10.5 --kv-gb 3.5
+hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4 llama3.1-8b 10.5 --kv-gb 3.5
+Qwen/Qwen3-8B-AWQ qwen3-8b 10.5 --kv-gb 3.5
+Qwen/Qwen2.5-14B-Instruct-AWQ qwen2.5-14b 14.5 --kv-gb 3.5
+Qwen/Qwen2.5-7B-Instruct qwen2.5-7b 19 --kv-gb 3

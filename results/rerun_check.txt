@@ -1,0 +1,4 @@
+qwen2.5-1.5b vs rerun_qwen2.5-1.5b: 900 Exp-A prompts, 12300 rule checks
+identical response text: 0.133
+rule-level agreement: 0.937
+mean compliance run1 0.2503  run2 0.2496  diff -0.07 pp

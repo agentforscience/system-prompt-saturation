@@ -1,0 +1,118 @@
+\section{Benchmark and Experimental Design}
+\label{sec:method}
+
+Our main question is how per-rule compliance with system-prompt rules depends on four factors: prompt length, rule count, rule position, and rule conflicts.
+We design the benchmark so that each factor can be varied while the others stay fixed.
+
+\subsection{Rules, queries, and padding}
+
+\para{Rule bank.}
+We write 40 rules that any response can satisfy at the same time.
+Each rule has a deterministic Python checker.
+The rules fall into five groups:
+start/end phrases (2 rules, \eg begin with ``Hello there, friend.'');
+keyword or phrase inclusion (about 20 rules, \eg mention ``Zanzibar'', include a sentence starting with ``Fun fact:'', include ``\#StaySharp'', mention the year 2031);
+formatting (bold text, a \texttt{\#\#} heading, a numbered list, a table, a code block, a quotation, a bracketed citation such as [1], a URL);
+punctuation (an emoji, a semicolon, a question);
+and exclusions (no ``!'', and never use ``very'', ``really'', or ``however'').
+Because the rules are compatible, any drop in compliance reflects the model's behavior rather than an impossible request.
+
+\para{Conflict pairs.}
+For \expD we add four pairs of mutually contradictory rules:
+\textsc{length\_hard} (``fewer than 80 words'' vs.\ ``at least 300 words''),
+\textsc{length\_soft} (``Be concise.'', checked as $<$150 words, vs.\ ``Explain thoroughly, with detail and examples.'', checked as $\ge$250 words),
+\textsc{lists} (``use a bulleted list'' vs.\ ``never use lists''),
+and \textsc{case} (``all lowercase'' vs.\ ``all UPPERCASE'', each checked as $\ge$97\% of letters).
+For each pair, at most one rule can be satisfied.
+
+\para{User queries.}
+We use 100 open-ended instructions from \alpaca~\cite{taori2023alpaca} with no input field.
+We keep open-ended requests (\eg those starting with ``Explain'', ``Describe'', ``What'', or ``How'') that carry no length or format constraints of their own.
+Query $i$ is used for item $i$ in {\em every} condition, so all comparisons are paired by query.
+
+\para{Padding.}
+To lengthen prompts without changing the rules, we insert paragraphs from the \wikitext validation split~\cite{merity2017pointer}, introduced as ``Reference material (background only)''.
+The padding is neutral with respect to every rule and is drawn at random for each item.
+
+\subsection{Experiments}
+
+\begin{table}[t]
+    \centering
+    \caption{Experimental design. Each cell has 100 paired items (one per user query). Rule subsets and order are drawn at random per item, so a rule's relative position is independent of its identity. Every model receives 3{,}600 prompts in total.}
+    \label{tab:design}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{@{}llll@{}}
+        \toprule
+        \textbf{Exp.} & \textbf{Factor} & \textbf{Manipulation} & \textbf{Cells $\times$ items} \\
+        \midrule
+        \expA & rule count & $N \in \{0,1,2,5,10,15,20,30,40\}$ rules as a numbered list (6--572 tokens) & $9 \times 100$ \\
+        \expB & length & $N{=}5$ rules, each a ``Response rule:'' paragraph at random boundaries in $\{0, 0.5\text{k}, 1\text{k}, 2\text{k}, 4\text{k}, 8\text{k}\}$ tokens of padding & $6 \times 100$ \\
+        \expD & conflict & 4 background keyword rules + \{X + filler rule, Y + filler rule, X + Y\}, same order skeleton & $4 \text{ pairs} \times 3 \times 100$ \\
+        \expE & count at length & $N \in \{10,20,40\}$ rules interleaved in $\sim$4k tokens of padding & $3 \times 100$ \\
+        \expF & block placement & 5 rules as one numbered block at the top / middle / bottom of $\sim$1k or $\sim$4k tokens of padding & $6 \times 100$ \\
+        \bottomrule
+    \end{tabular}}
+\end{table}
+
+\Tabref{tab:design} summarizes the five experiments.
+\expA varies the number of rules in a plain numbered list; $N{=}0$ gives each model's {\em base rate} for every rule, \ie how often an unprompted response satisfies it.
+\expB fixes the rule count at five and varies length by adding padding, with each rule inserted as a separate paragraph at a random position.
+\expD holds the number of rules fixed and compares each conflict rule alone (paired with a neutral filler rule) to the same rule together with its contradiction.
+Because \expA confounds count and length (40 rules take about 570 tokens), \expE varies count at a fixed length of about 4k tokens.
+Finally, \expF separates two explanations of the length penalty: distance from the end of the prompt and scattering among unrelated text.
+It places the same five rules as one contiguous block at the top, middle, or bottom of the padding.
+We added \expE and \expF after the first model had run; they use separate random streams, and we verified that the \expA, \expB, and \expD prompts are byte-identical across models.
+
+\subsection{Models and decoding}
+
+\begin{table}[t]
+    \centering
+    \caption{Models. AWQ int4 checkpoints were used where shared-GPU memory did not allow bf16. Coverage marks which experiments finished for each model.}
+    \label{tab:models}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{@{}lllll@{}}
+        \toprule
+        \textbf{Model} & \textbf{Checkpoint} & \textbf{Params} & \textbf{Precision} & \textbf{Experiments} \\
+        \midrule
+        \qhalf & Qwen/Qwen2.5-0.5B-Instruct & 0.5B & bf16 & A, B, D, E, F \\
+        \lone & unsloth/Llama-3.2-1B-Instruct & 1.2B & bf16 & A, B, D, E, F \\
+        \qonefive & Qwen/Qwen2.5-1.5B-Instruct & 1.5B & bf16 & A, B, D, E, F \\
+        \qthree & Qwen/Qwen2.5-3B-Instruct-AWQ & 3.1B & AWQ int4 & A, B, D, E, F \\
+        \lthree & AMead10/Llama-3.2-3B-Instruct-AWQ & 3.2B & AWQ int4 & A, B, D, E, F \\
+        \qseven & Qwen/Qwen2.5-7B-Instruct & 7.6B & bf16 & A, B, D \\
+        \leight & hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4 & 8.0B & AWQ int4 & A, B, D, E, F \\
+        \qwenthree & Qwen/Qwen3-8B-AWQ (thinking off) & 8.2B & AWQ int4 & A, D \\
+        \qfourteen & Qwen/Qwen2.5-14B-Instruct-AWQ & 14.7B & AWQ int4 & A, D \\
+        \bottomrule
+    \end{tabular}}
+\end{table}
+
+We evaluate nine open instruction-tuned models from three families: Qwen2.5~\cite{qwen2025qwen25}, Llama-3.x~\cite{dubey2024llama3}, and Qwen3~\cite{yang2025qwen3} (\tabref{tab:models}).
+All models run locally with vLLM~\cite{kwon2023vllm} using each model's own chat template, greedy decoding (temperature 0), at most 1{,}024 new tokens, and seed 42.
+The GPUs (4$\times$ RTX A6000) were shared with other users, so most runs had only 5--13\,GB of memory.
+We therefore used AWQ~\cite{lin2024awq} int4 checkpoints for the 3B, 8B, and 14B models.
+For the same reason, not every model finished every experiment (last column of \tabref{tab:models}).
+In total we collected 28{,}500 generations and 256{,}500 scored rule instances in about 4.5 GPU-hours.
+
+\subsection{Metrics and statistics}
+
+\para{Per-rule compliance.}
+Our main metric is the fraction of (response, rule) pairs for which the checker passes.
+We also report the all-rules-followed rate, the fraction of responses that satisfy every rule in their prompt.
+
+\para{Chance-corrected retention.}
+Some rules are often satisfied by accident (\eg exclusion rules have base rates of 81--99\%).
+To compare models with different base rates, we define retention at $N$ rules as
+\begin{equation}
+    R(N) = \frac{c(N) - b}{c(1\text{--}2) - b},
+\end{equation}
+where $c(N)$ is per-rule compliance at $N$ rules, $c(1\text{--}2)$ is the mean over $N \in \{1, 2\}$, and $b$ is the base rate for the same rules measured at $N{=}0$.
+$R(N){=}1$ means the model follows rules as well as when it has only one or two.
+
+\para{Statistical tests.}
+Confidence intervals come from an item-clustered bootstrap over the 100 queries (2{,}000 resamples).
+For length (H1) we fit a linear probability model of compliance on $\log_2$(prompt tokens) with rule fixed effects, using prompts of at least 500 tokens.
+For position (H2) we regress compliance on position bins (first 20\%, middle, last 20\%) with rule and condition fixed effects.
+Pooled models add model fixed effects, and all regressions use cluster-robust standard errors by item.
+For conflicts (H3) we use paired exact McNemar tests (alone vs.\ with the contradiction).
+We apply Holm correction across the 72 model $\times$ pair $\times$ rule conflict tests and across the per-model length slopes.

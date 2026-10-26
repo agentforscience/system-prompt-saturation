@@ -1,0 +1,60 @@
+\section{Discussion}
+\label{sec:discussion}
+
+\para{Dilution, not saturation.}
+H4 pictures rule-following as a capacity that fills up: a model handles rules perfectly until it runs out of room.
+Our data do not show this.
+Every model loses compliance from about the fifth rule onward, and the curve is smooth rather than a cliff.
+A better description is dilution: each additional rule, and each additional thousand tokens between a rule and the user turn, lowers the chance that any given rule shapes the output.
+Model quality sets both the starting level and the rate of decline, but no tested model stays flat to 20 rules.
+\qwenthree comes closest (0.92 at 10 rules, 0.87 at 20), which suggests that newer instruction-tuning recipes matter more than raw scale.
+\qfourteen did not beat \qseven; this could be partly due to quantization, but it fits the view that scale alone does not buy rule capacity.
+
+\para{Length hurts through distance and burial.}
+Comparing \expB and \expF, the same five rules in a 4k-token prompt are followed 28\% of the time when scattered, 34\% as a block in the middle, 40\% as a block at the top, and 55\% as a block at the bottom.
+Chat models appear to weight the most recent system text heavily when they decide on format and content.
+For short lists, the first rules benefit instead.
+The two patterns are consistent once we note that in a short list all rules are already close to the end.
+
+\para{Contradictions are costly.}
+Contradictory rules do more than force a choice.
+For numeric constraints, models often split the difference and fail both rules, so a contradictory pair can be worse than dropping one of its rules.
+For soft conflicts, the ``thorough'' instruction reliably wins.
+
+\para{Practical guidance.}
+Our results suggest three rules of thumb for prompt authors.
+First, every rule has a cost, starting with the first few, so prompts should contain only rules that matter.
+Second, in long system prompts, critical rules should sit in one contiguous block at the end, right before the user turn; in short rule lists, the most important rules should come first.
+Third, prompts should be checked for contradictions, because models seldom resolve them gracefully.
+
+\subsection{Limitations}
+\label{sec:limitations}
+
+\para{Open models only.}
+No API keys were available, so we could not test commercial frontier models.
+These may be much more robust; \qwenthree already is.
+
+\para{Quantization is confounded with size.}
+The 3B, 8B, and 14B models are AWQ int4, while the 0.5B--1.5B and 7B models are bf16.
+The finding that \qfourteen does not beat \qseven may partly reflect quantization.
+
+\para{Incomplete coverage.}
+Shared-GPU contention meant that \expB covers 7 models, \expE and \expF cover 6, and \qwenthree and \qfourteen have only \expA and \expD.
+Our length and placement conclusions therefore do not include the two strongest models on the count experiment.
+
+\para{Synthetic rules and padding.}
+Our rules are verifiable but artificial: arbitrary keywords and formats.
+Real system-prompt rules (tone, refusals, tool policies) may behave differently.
+Inclusion rules are harder than natural ones, and exclusion rules sit near ceiling.
+Our padding is encyclopedic text labeled as background; realistic padding such as tool documentation may compete with rules more or less strongly.
+
+\para{Design confounds and variance.}
+In \expA, count and length grow together; \expE addresses this only for the models that ran it.
+Each model was run once with greedy decoding, and run-to-run variance from batch non-invariance was checked on one model only.
+Our confidence intervals cover query sampling, not decoding noise.
+Finally, we test only single-turn answers of about 100--500 words.
+
+\para{Broader impact.}
+System-prompt rules often encode safety and policy constraints.
+Our results show that such rules can be silently dropped in long prompts, so deployers should not assume that a rule written into a system prompt will be enforced.
+Measuring rule compliance under realistic prompt lengths should be part of deployment testing.

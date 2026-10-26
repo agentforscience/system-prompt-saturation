@@ -1,0 +1,5 @@
+Qwen/Qwen2.5-1.5B-Instruct qwen2.5-1.5b 7 --max-num-seqs 48
+unsloth/Llama-3.2-1B-Instruct llama3.2-1b 7 --max-num-seqs 48
+Qwen/Qwen2.5-0.5B-Instruct qwen2.5-0.5b 5 --max-num-seqs 48
+Qwen/Qwen2.5-3B-Instruct qwen2.5-3b 11
+unsloth/Llama-3.2-3B-Instruct llama3.2-3b 11

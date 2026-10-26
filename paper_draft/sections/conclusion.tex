@@ -1,0 +1,13 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+We tested four quantitative claims about system-prompt compliance with a controlled benchmark of 40 verifiable rules and 4 conflict pairs on 9 open models.
+Compliance degrades continuously.
+It falls by about 7.7\pp (15\% relative) per doubling of prompt length at a fixed rule count, declines with every rule added from about five rules on, and drops by 30--83\% when rules contradict.
+All of these effects are steeper than the hypothesized magnitudes, and the predicted size thresholds of 10 and 20 rules did not appear.
+Model recipe mattered more than parameter count.
+
+The key takeaway is about placement: in long system prompts, put the rules that must be followed in one block at the end; in short rule lists, put the most important rules first.
+
+Several directions follow.
+We plan to repeat the study with frontier API models and with bf16 versions of the 3B, 8B, and 14B models; to use realistic rule types such as tone, refusal, and tool-use policies, scored by an LLM judge; to fully cross placement, count, and length, including repeating critical rules at the end; to study multi-turn sessions; and to test whether explicit priority markers or a stated conflict-resolution order prevent compromises that satisfy neither rule.
